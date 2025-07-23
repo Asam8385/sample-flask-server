@@ -19,6 +19,11 @@ CORS(app)
 with app.app_context():
     db.create_all()
 
+# Simple health / hello-world check
+@app.route('/api', methods=['GET'])
+def hello_world():
+    return jsonify({'message': 'Hello, world!'}), 200
+
 # Authentication Routes
 @app.route('/api/auth/signup', methods=['POST'])
 def signup():
