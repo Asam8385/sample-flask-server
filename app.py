@@ -1,5 +1,3 @@
-# app.py
-
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
@@ -10,23 +8,33 @@ from models import db, User, Room, Booking, Payment, AboutUs
 app = Flask(__name__)
 app.config.from_object(Config)
 
+# Configure CORS to handle preflight OPTIONS and expose Authorization header
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
+
 # Initialize extensions
 db.init_app(app)
 jwt = JWTManager(app)
-CORS(app)
 
 # Create tables if they don't exist
 with app.app_context():
     db.create_all()
 
-# Simple health / hello-world check
+# Simple hello-world check
 @app.route('/api', methods=['GET'])
 def hello_world():
     return jsonify({'message': 'Hello, world!'}), 200
 
 # Authentication Routes
-@app.route('/api/auth/signup', methods=['POST'])
+@app.route('/api/auth/signup', methods=['POST', 'OPTIONS'])
 def signup():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     try:
         data = request.get_json()
         if User.query.filter_by(email=data['email']).first():
@@ -53,8 +61,10 @@ def signup():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/auth/login', methods=['POST'])
+@app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
 def login():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     try:
         data = request.get_json()
         user = User.query.filter_by(email=data['email']).first()
@@ -73,16 +83,20 @@ def login():
         return jsonify({'error': str(e)}), 500
 
 # Room Routes
-@app.route('/api/rooms', methods=['GET'])
+@app.route('/api/rooms', methods=['GET', 'OPTIONS'])
 def get_rooms():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     try:
         rooms = Room.query.filter_by(is_available=True).all()
         return jsonify([room.to_dict() for room in rooms]), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/rooms/<int:room_id>', methods=['GET'])
+@app.route('/api/rooms/<int:room_id>', methods=['GET', 'OPTIONS'])
 def get_room(room_id):
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     try:
         room = Room.query.get_or_404(room_id)
         return jsonify(room.to_dict()), 200
@@ -90,9 +104,11 @@ def get_room(room_id):
         return jsonify({'error': str(e)}), 500
 
 # Booking Routes
-@app.route('/api/bookings', methods=['POST'])
+@app.route('/api/bookings', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def create_booking():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     try:
         data = request.get_json()
         user_id = get_jwt_identity()
@@ -127,9 +143,11 @@ def create_booking():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/bookings/user/<int:user_id>', methods=['GET'])
+@app.route('/api/bookings/user/<int:user_id>', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_user_bookings(user_id):
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     try:
         current_user_id = get_jwt_identity()
         if current_user_id != user_id:
@@ -142,50 +160,52 @@ def get_user_bookings(user_id):
         return jsonify({'error': str(e)}), 500
 
 # Profile Routes
-@app.route('/api/profile/<int:user_id>', methods=['GET'])
+@app.route('/api/profile/<int:user_id>', methods=['GET', 'PUT', 'OPTIONS'])
 @jwt_required()
-def get_profile(user_id):
-    try:
-        current_user_id = get_jwt_identity()
-        if current_user_id != user_id:
-            return jsonify({'error': 'Unauthorized'}), 403
+def profile(user_id):
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
 
-        user = User.query.get_or_404(user_id)
-        return jsonify(user.to_dict()), 200
+    if request.method == 'GET':
+        try:
+            current_user_id = get_jwt_identity()
+            if current_user_id != user_id:
+                return jsonify({'error': 'Unauthorized'}), 403
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            user = User.query.get_or_404(user_id)
+            return jsonify(user.to_dict()), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
-@app.route('/api/profile/<int:user_id>', methods=['PUT'])
-@jwt_required()
-def update_profile(user_id):
-    try:
-        current_user_id = get_jwt_identity()
-        if current_user_id != user_id:
-            return jsonify({'error': 'Unauthorized'}), 403
+    if request.method == 'PUT':
+        try:
+            current_user_id = get_jwt_identity()
+            if current_user_id != user_id:
+                return jsonify({'error': 'Unauthorized'}), 403
 
-        user = User.query.get_or_404(user_id)
-        data = request.get_json()
+            user = User.query.get_or_404(user_id)
+            data = request.get_json()
 
-        user.first_name = data.get('first_name', user.first_name)
-        user.last_name = data.get('last_name', user.last_name)
-        user.phone = data.get('phone', user.phone)
-        user.updated_at = datetime.utcnow()
+            user.first_name = data.get('first_name', user.first_name)
+            user.last_name = data.get('last_name', user.last_name)
+            user.phone = data.get('phone', user.phone)
+            user.updated_at = datetime.utcnow()
 
-        db.session.commit()
+            db.session.commit()
 
-        return jsonify({
-            'message': 'Profile updated successfully',
-            'user': user.to_dict()
-        }), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            return jsonify({
+                'message': 'Profile updated successfully',
+                'user': user.to_dict()
+            }), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
 # Payment Routes
-@app.route('/api/payments', methods=['POST'])
+@app.route('/api/payments', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def process_payment():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     try:
         data = request.get_json()
         user_id = get_jwt_identity()
@@ -217,8 +237,10 @@ def process_payment():
         return jsonify({'error': str(e)}), 500
 
 # About Us Route
-@app.route('/api/about', methods=['GET'])
+@app.route('/api/about', methods=['GET', 'OPTIONS'])
 def get_about():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     try:
         about_sections = AboutUs.query.all()
         return jsonify([section.to_dict() for section in about_sections]), 200
@@ -226,8 +248,10 @@ def get_about():
         return jsonify({'error': str(e)}), 500
 
 # Health Check
-@app.route('/api/health', methods=['GET'])
+@app.route('/api/health', methods=['GET', 'OPTIONS'])
 def health_check():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     return jsonify({'status': 'healthy', 'message': 'Peiris Grand Resort API is running'}), 200
 
 if __name__ == '__main__':
